@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .question {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .question img {
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 15px;
+        }
+        .options {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .option {
+            padding: 8px 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .option.selected {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        input[type="text"],
+        input[type="password"] {
+            padding: 8px;
+            margin-bottom: 20px;
+            width: 200px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        .status-correct {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-wrong {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-blank {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .auth-container {
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .auth-form {
+            margin-bottom: 20px;
+        }
+        .nav-buttons {
+            margin: 20px 0;
+        }
+        .test-history {
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="auth-container" class="auth-container">
+        <div id="login-form" class="auth-form">
+            <h2>Giriş Yap</h2>
+            <div>
+                <input type="text" id="login-username" placeholder="Kullanıcı Adı">
+            </div>
+            <div>
+                <input type="password" id="login-password" placeholder="Şifre">
+            </div>
+            <button onclick="login()">Giriş Yap</button>
+            <p>Hesabınız yok mu? <a href="#" onclick="showRegister()">Kayıt Ol</a></p>
+        </div>
+        
+        <div id="register-form" class="auth-form" style="display: none;">
+            <h2>Kayıt Ol</h2>
+            <div>
+                <input type="text" id="register-username" placeholder="Kullanıcı Adı">
+            </div>
+            <div>
+                <input type="password" id="register-password" placeholder="Şifre">
+            </div>
+            <button onclick="register()">Kayıt Ol</button>
+            <p>Zaten hesabınız var mı? <a href="#" onclick="showLogin()">Giriş Yap</a></p>
+        </div>
+    </div>
+
+    <div id="main-content" style="display: none;">
+        <h1>Online Test</h1>
+        
+        <div class="nav-buttons">
+            <button onclick="showTestHistory()">Çözülen Testler</button>
+            <button onclick="logout()">Çıkış Yap</button>
+        </div>
+
+        <div id="test-form">
+            <div id="questions-container"></div>
+            <button onclick="submitTest()">Testi Gönder</button>
+        </div>
+
+        <div id="test-history" class="test-history"></div>
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        let questions = [];
+        let answers = {};
+        let currentUser = null;
+
+        // Sayfa yüklendiğinde oturum kontrolü
+        window.onload = function() {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = savedUser;
+                showMainContent();
+            }
+        };
+
+        function showLogin() {
+            document.getElementById('register-form').style.display = 'none';
+            document.getElementById('login-form').style.display = 'block';
+        }
+
+        function showRegister() {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
+        }
+
+        function showMainContent() {
+            document.getElementById('auth-container').style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+            loadQuestions();
+        }
+
+        async function register() {
+            const username = document.getElementById('register-username').value;
+            const password = document.getElementById('register-password').value;
+
+            try {
+                const response = await fetch('http://localhost:5000/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert('Kayıt başarılı! Giriş yapabilirsiniz.');
+                    showLogin();
+                } else {
+                    alert(data.error);
+                }
+            } catch (error) {
+                alert('Kayıt sırasında bir hata oluştu.');
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch('http://localhost:5000/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    currentUser = username;
+                    localStorage.setItem('currentUser', username);
+                    showMainContent();
+                } else {
+                    alert(data.error);
+                }
+            } catch (error) {
+                alert('Giriş sırasında bir hata oluştu.');
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            localStorage.removeItem('currentUser');
+            document.getElementById('main-content').style.display = 'none';
+            document.getElementById('auth-container').style.display = 'block';
+            document.getElementById('login-username').value = '';
+            document.getElementById('login-password').value = '';
+            // Test formunu temizle
+            document.getElementById('questions-container').innerHTML = '';
+            document.getElementById('result').style.display = 'none';
+            answers = {};
+        }
+
+        function loadQuestions() {
+            fetch('http://localhost:5000/test')
+                .then(response => response.json())
+                .then(data => {
+                    questions = data;
+                    displayQuestions();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('questions-container').innerHTML = 
+                        '<p class="error">Sorular yüklenirken bir hata oluştu.</p>';
+                });
+        }
+
+        function displayQuestions() {
+            const container = document.getElementById('questions-container');
+            container.innerHTML = ''; // Container'ı temizle
+            questions.forEach(question => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'question';
+                questionDiv.innerHTML = `
+                    <h3>${question.text}</h3>
+                    <img src="data:image/jpeg;base64,${question.image_base64}" alt="Soru ${question.id}">
+                    <div class="options">
+                        ${question.options.map((option, index) => `
+                            <div class="option" 
+                                 onclick="selectOption(${question.id}, ${index + 1})" 
+                                 id="q${question.id}o${index + 1}">
+                                ${option}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                container.appendChild(questionDiv);
+            });
+        }
+
+        async function showTestHistory() {
+            const historyDiv = document.getElementById('test-history');
+            const testForm = document.getElementById('test-form');
+            const resultDiv = document.getElementById('result');
+
+            try {
+                const response = await fetch(`http://localhost:5000/user-tests/${currentUser}`);
+                const tests = await response.json();
+
+                let historyHTML = '<h2>Test Geçmişi</h2>';
+                if (tests.length === 0) {
+                    historyHTML += '<p>Henüz test çözülmemiş.</p>';
+                } else {
+                    historyHTML += '<table><thead><tr><th>Tarih</th><th>Net Puan</th></tr></thead><tbody>';
+                    tests.forEach(test => {
+                        historyHTML += `
+                            <tr>
+                                <td>${test.submission_date}</td>
+                                <td>${test.score}</td>
+                            </tr>
+                        `;
+                    });
+                    historyHTML += '</tbody></table>';
+                }
+
+                historyHTML += '<button onclick="hideTestHistory()">Geri Dön</button>';
+
+                historyDiv.innerHTML = historyHTML;
+                historyDiv.style.display = 'block';
+                testForm.style.display = 'none';
+                resultDiv.style.display = 'none';
+            } catch (error) {
+                alert('Test geçmişi yüklenirken bir hata oluştu.');
+            }
+        }
+
+        function hideTestHistory() {
+            document.getElementById('test-history').style.display = 'none';
+            document.getElementById('test-form').style.display = 'block';
+        }
+
+        function selectOption(questionId, optionIndex) {
+            const options = document.querySelectorAll(`[id^="q${questionId}o"]`);
+            options.forEach(opt => opt.classList.remove('selected'));
+            
+            const selectedOption = document.getElementById(`q${questionId}o${optionIndex}`);
+            selectedOption.classList.add('selected');
+            
+            answers[questionId] = optionIndex;
+        }
+
+        function getStatusClass(status) {
+            switch(status) {
+                case 'correct': return 'status-correct';
+                case 'wrong': return 'status-wrong';
+                case 'blank': return 'status-blank';
+                default: return '';
+            }
+        }
+
+        function getStatusText(status) {
+            switch(status) {
+                case 'correct': return 'Doğru';
+                case 'wrong': return 'Yanlış';
+                case 'blank': return 'Boş';
+                default: return '';
+            }
+        }
+
+        async function submitTest() {
+            if (!currentUser) {
+                alert('Lütfen önce giriş yapın!');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:5000/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: currentUser,
+                        answers: answers
+                    })
+                });
+
+                const data = await response.json();
+                const resultDiv = document.getElementById('result');
+                resultDiv.style.display = 'block';
+                
+                let resultHTML = `
+                    <h2>Test Sonuçlarınız</h2>
+                    <p><strong>Kullanıcı Adı:</strong> ${data.username}</p>
+                    <p><strong>Doğru Sayısı:</strong> ${data.correct}</p>
+                    <p><strong>Yanlış Sayısı:</strong> ${data.wrong}</p>
+                    <p><strong>Boş Sayısı:</strong> ${data.blank}</p>
+                    <p><strong>Net Sonucunuz:</strong> ${data.net}</p>
+                    <h3>Soru Detayları</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Soru No</th>
+                                <th>Durum</th>
+                                <th>Verilen Cevap</th>
+                                <th>Doğru Cevap</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                data.details.forEach(detail => {
+                    const questionNumber = detail.question_id;
+                    const status = detail.status;
+                    const userAnswer = answers[questionNumber] ? String.fromCharCode(64 + answers[questionNumber]) : '-';
+                    const correctAnswer = String.fromCharCode(64 + questions[questionNumber - 1].correct_option);
+                    
+                    resultHTML += `
+                        <tr class="${getStatusClass(status)}">
+                            <td>${questionNumber}</td>
+                            <td>${getStatusText(status)}</td>
+                            <td>${userAnswer}</td>
+                            <td>${correctAnswer}</td>
+                        </tr>
+                    `;
+                });
+
+                resultHTML += `
+                        </tbody>
+                    </table>
+                `;
+
+                resultDiv.innerHTML = resultHTML;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 
+                    '<p class="error">Sonuçlar gönderilirken bir hata oluştu.</p>';
+            }
+        }
+    </script>
+</body>
+</html>

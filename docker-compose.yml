@@ -1,0 +1,49 @@
+# version: "3.8"
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy  # MySQL tamamen hazır olmadan backend başlamaz
+    networks:
+      - mytest-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - mytest-network
+
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: 
+      MYSQL_PASSWORD: 
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-test-app-data:/var/lib/mysql
+    networks:
+      - mytest-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql-test-app-data:
+
+networks:
+  mytest-network:
+    driver: bridge
