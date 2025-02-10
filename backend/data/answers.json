@@ -1,5 +1,8 @@
 {
-  "q1.png": 3,
-  "q2.png": 2,
-  "q3.png": 3
+  "title": "Yönler",
+  "answers": {
+    "q1.png": 3,
+    "q2.png": 2,
+    "q3.png": 3
+  }
 }

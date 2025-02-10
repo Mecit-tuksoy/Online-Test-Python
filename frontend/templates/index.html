@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Online Test</title>
+    <title>Mecit Hoca Online Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -139,7 +139,21 @@
     </div>
 
     <div id="main-content" style="display: none;">
-        <h1>Online Test</h1>
+        <div id="user-welcome" style="text-align: center; margin-bottom: 10px; font-weight: bold; background-color: lightblue; padding: 10px;">
+            Hoş geldiniz, <span id="current-user-name"></span>
+        </div>
+        <h1>Mecit Hoca ile Online Test</h1>
+
+        <div class="stats-container">
+            <div class="stat-box">
+                <div class="stat-value" id="daily-visitors">0</div>
+                <div class="stat-label">Bugünkü Ziyaretçi</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="total-visitors">0</div>
+                <div class="stat-label">Toplam Ziyaretçi</div>
+            </div>
+        </div>
         
         <div class="nav-buttons">
             <button onclick="showTestHistory()">Çözülen Testler</button>
@@ -147,6 +161,7 @@
         </div>
 
         <div id="test-form">
+            <h2 id="test-title"></h2>
             <div id="questions-container"></div>
             <button onclick="submitTest()">Testi Gönder</button>
         </div>
@@ -159,15 +174,30 @@
         let questions = [];
         let answers = {};
         let currentUser = null;
+        let currentTestTitle = '';
 
         // Sayfa yüklendiğinde oturum kontrolü
         window.onload = function() {
             const savedUser = localStorage.getItem('currentUser');
             if (savedUser) {
                 currentUser = savedUser;
+                document.getElementById('current-user-name').textContent = savedUser;
                 showMainContent();
             }
+            updateStats();
         };
+
+        async function updateStats() {
+            try {
+                const response = await fetch('http://localhost:5000/stats');
+                const data = await response.json();
+                
+                document.getElementById('daily-visitors').textContent = data.daily_visitors;
+                document.getElementById('total-visitors').textContent = data.total_visitors;
+            } catch (error) {
+                console.error('Stats error:', error);
+            }
+        }
 
         function showLogin() {
             document.getElementById('register-form').style.display = 'none';
@@ -182,6 +212,7 @@
         function showMainContent() {
             document.getElementById('auth-container').style.display = 'none';
             document.getElementById('main-content').style.display = 'block';
+            document.getElementById('current-user-name').textContent = currentUser;
             loadQuestions();
         }
 
@@ -227,6 +258,7 @@
                 if (response.ok) {
                     currentUser = username;
                     localStorage.setItem('currentUser', username);
+                    document.getElementById('current-user-name').textContent = username;
                     showMainContent();
                 } else {
                     alert(data.error);
@@ -253,7 +285,9 @@
             fetch('http://localhost:5000/test')
                 .then(response => response.json())
                 .then(data => {
-                    questions = data;
+                    questions = data.questions;
+                    currentTestTitle = data.test_title;
+                    document.getElementById('test-title').textContent = currentTestTitle;
                     displayQuestions();
                 })
                 .catch(error => {
@@ -299,11 +333,12 @@
                 if (tests.length === 0) {
                     historyHTML += '<p>Henüz test çözülmemiş.</p>';
                 } else {
-                    historyHTML += '<table><thead><tr><th>Tarih</th><th>Net Puan</th></tr></thead><tbody>';
+                    historyHTML += '<table><thead><tr><th>Tarih</th><th>Konu</th><th>Net Puan</th></tr></thead><tbody>';
                     tests.forEach(test => {
                         historyHTML += `
                             <tr>
                                 <td>${test.submission_date}</td>
+                                <td>${test.test_title || 'Belirtilmemiş'}</td>
                                 <td>${test.score}</td>
                             </tr>
                         `;
@@ -369,7 +404,8 @@
                     },
                     body: JSON.stringify({
                         username: currentUser,
-                        answers: answers
+                        answers: answers,
+                        test_title: currentTestTitle
                     })
                 });
 

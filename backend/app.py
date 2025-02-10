@@ -4,17 +4,16 @@ import base64
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, date
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 CORS(app)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://user:....@127.0.0.1:3306/testdb'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://mecit:mct123@127.0.0.1:3306/testdb'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -27,7 +26,12 @@ class TestSubmission(db.Model):
     answers = db.Column(db.Text, nullable=False)
     score = db.Column(db.Float, nullable=False)
     submission_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    test_title = db.Column(db.String(100), nullable=False)  # Yeni eklenen alan
 
+class PageVisit(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    visit_date = db.Column(db.Date, nullable=False)
+    visit_count = db.Column(db.Integer, default=1)
 
 DEFAULT_OPTIONS = ["A", "B", "C", "D"]
 
@@ -38,12 +42,13 @@ ANSWERS_FILE = os.path.join(DATA_DIR, "answers.json")
 def load_answers():
     if os.path.exists(ANSWERS_FILE):
         with open(ANSWERS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+            data = json.load(f)
+            return data.get('title', ''), data.get('answers', {})
+    return '', {}
 
 def load_questions():
     questions = []
-    answers = load_answers()
+    test_title, answers = load_answers()
     try:
         image_files = [f for f in os.listdir(TEST_IMAGES_DIR)
                        if os.path.isfile(os.path.join(TEST_IMAGES_DIR, f)) and
@@ -54,7 +59,7 @@ def load_questions():
             with open(image_path, "rb") as img_file:
                 img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
 
-            correct_option = answers.get(f"q{idx}.png", 0)  # Düzeltildi: Doğru cevap eşleştirmesi için
+            correct_option = answers.get(f"q{idx}.png", 0)
 
             question = {
                 "id": idx,
@@ -66,9 +71,40 @@ def load_questions():
             questions.append(question)
     except Exception as e:
         print(f"Error loading questions: {str(e)}")
-        return []
-    return questions
+        return [], ''
+    return questions, test_title
 
+def record_visit():
+    today = date.today()
+    visit = PageVisit.query.filter_by(visit_date=today).first()
+    
+    if visit:
+        visit.visit_count += 1
+    else:
+        visit = PageVisit(visit_date=today, visit_count=1)
+        db.session.add(visit)
+    
+    try:
+        db.session.commit()
+    except:
+        db.session.rollback()
+
+@app.route('/stats', methods=['GET'])
+def get_stats():
+    try:
+        today = date.today()
+        today_visits = PageVisit.query.filter_by(visit_date=today).first()
+        daily_visitors = today_visits.visit_count if today_visits else 0
+        
+        total_visitors = db.session.query(db.func.sum(PageVisit.visit_count)).scalar() or 0
+        
+        return jsonify({
+            "daily_visitors": daily_visitors,
+            "total_visitors": total_visitors
+        })
+    except Exception as e:
+        print(f"Error getting stats: {str(e)}")
+        return jsonify({"error": "Failed to get statistics"}), 500
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -104,6 +140,7 @@ def login():
     user = User.query.filter_by(username=username).first()
     
     if user and check_password_hash(user.password_hash, password):
+        record_visit()  # Ziyaret kaydı
         return jsonify({"message": "Login successful", "username": username}), 200
     
     return jsonify({"error": "Invalid username or password"}), 401
@@ -119,21 +156,23 @@ def get_user_tests(username):
             "id": test.id,
             "score": test.score,
             "submission_date": test.submission_date.strftime("%Y-%m-%d %H:%M:%S"),
-            "answers": json.loads(test.answers)
+            "answers": json.loads(test.answers),
+            "test_title": test.test_title  # Yeni eklenen alan
         })
     
     return jsonify(test_history)
 
 @app.route('/')
 def home():
+    record_visit()  # Ziyaret kaydı
     return jsonify({"message": "Test API is running", "status": "ok"})
 
 @app.route('/test', methods=['GET'])
 def get_test():
-    questions = load_questions()
+    questions, test_title = load_questions()
     if not questions:
         return jsonify({"error": "Failed to load questions"}), 500
-    return jsonify(questions)
+    return jsonify({"questions": questions, "test_title": test_title})
 
 @app.route('/submit', methods=['POST'])
 def submit():
@@ -147,7 +186,7 @@ def submit():
     username = data.get("username")
     user_answers = data.get("answers", {})
 
-    questions = load_questions()
+    questions, test_title = load_questions()
 
     correct = 0
     wrong = 0
@@ -165,7 +204,7 @@ def submit():
             details.append({"question_id": qid, "status": "blank"})
         else:
             try:
-                answer = int(answer)  # Düzeltildi: 1-tabanlı indeksi düzelt
+                answer = int(answer)
                 if answer == q["correct_option"]:
                     correct += 1
                     correct_questions.append(qid)
@@ -179,13 +218,14 @@ def submit():
                 wrong_questions.append(qid)
                 details.append({"question_id": qid, "status": "wrong"})
 
-    net = correct - (wrong / 3.0)  # Net puan hesaplaması
+    net = correct - (wrong / 3.0)
 
     try:
         submission = TestSubmission(
             username=username,
             answers=json.dumps(user_answers),
-            score=net
+            score=net,
+            test_title=test_title  # Yeni eklenen alan
         )
         db.session.add(submission)
         db.session.commit()
@@ -203,7 +243,8 @@ def submit():
         "net": round(net, 2),
         "correct_questions": correct_questions,
         "wrong_questions": wrong_questions,
-        "details": details
+        "details": details,
+        "test_title": test_title  # Yeni eklenen alan
     })
 
 if __name__ == '__main__':
